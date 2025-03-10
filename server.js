@@ -1,54 +1,46 @@
-const express = require('express');
-const http = require('http');
-const socketIo = require('socket.io');
-
-const app = express();
-const server = http.createServer(app);
-const io = socketIo(server);
-
-let onlineUsers = [];
-
-app.use(express.static('public')); // Serve the static files like the HTML file
-
-io.on('connection', (socket) => {
-  // New user connected
-  socket.on('user-connected', (data) => {
-    onlineUsers.push(data.username);
-    io.emit('online-users', onlineUsers);
-  });
-
-  // Message from a user
-  socket.on('send-message', (message) => {
-    io.emit('message', message);  // Broadcast to all users
-  });
-
-  // Private message
-  socket.on('send-private-message', (data) => {
-    const { user, message } = data;
-    io.to(user).emit('message', `Private message: ${message}`);
-  });
-
-  // Handle ICE candidates for WebRTC
-  socket.on('send-ice-candidate', (candidate) => {
-    socket.broadcast.emit('receive-ice-candidate', candidate);
-  });
-
-  // Handle offer and answer for WebRTC
-  socket.on('send-offer', (offer) => {
-    socket.broadcast.emit('receive-offer', offer);
-  });
-
-  socket.on('send-answer', (answer) => {
-    socket.broadcast.emit('receive-answer', answer);
-  });
-
-  // User disconnected
-  socket.on('disconnect', () => {
-    onlineUsers = onlineUsers.filter(user => user !== socket.id);
-    io.emit('online-users', onlineUsers);
-  });
+addEventListener("fetch", event => {
+    event.respondWith(handleRequest(event.request));
 });
 
-server.listen(3000, () => {
-  console.log('Server running on http://localhost:3000');
-});
+const TELEGRAM_BOT_TOKEN ="7703516205:AAGezZg7fkW17xOSuKbvUMV1Jsz5TloshGw";
+const TELEGRAM_API_URL = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
+
+async function handleRequest(request) {
+    if (request.method === "POST") {
+        let update = await request.json();
+
+        // Handle messages
+        if (update.message) {
+            let chat_id = update.message.chat.id;
+            let text = update.message.text;
+
+            // Reply to user
+            await sendMessage(chat_id, `You said: ${text}`);
+        }
+
+        return new Response("OK", { status: 200 });
+    }
+
+    // Webhook setup route
+    if (request.method === "GET" && new URL(request.url).pathname === "/set-webhook") {
+        const webhookUrl = `https://your-cloudflare-worker-url/`;  // Cloudflare Worker URL
+        const setWebhookUrl = `${TELEGRAM_API_URL}/setWebhook?url=${webhookUrl}`;
+
+        let response = await fetch(setWebhookUrl);
+        let result = await response.json();
+        return new Response(JSON.stringify(result), { status: 200 });
+    }
+
+    return new Response("Invalid request", { status: 400 });
+}
+
+async function sendMessage(chat_id, text) {
+    let url = `${TELEGRAM_API_URL}/sendMessage`;
+    let body = JSON.stringify({ chat_id, text });
+
+    await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: body
+    });
+}
